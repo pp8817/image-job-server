@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: image_jobs
+      POSTGRES_USER: image_jobs
+      POSTGRES_PASSWORD: image_jobs
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U image_jobs -d image_jobs"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: ..
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/image_jobs
+      SPRING_DATASOURCE_USERNAME: image_jobs
+      SPRING_DATASOURCE_PASSWORD: image_jobs
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      APP_WORKER_ENABLED: "true"
+      APP_WORKER_ID: "worker-1"
+      APP_WORKER_LEASE_SECONDS: "30"
+      APP_WORKER_BATCH_SIZE: "5"
+      APP_WORKER_MAX_ATTEMPTS: "3"
+      APP_MOCK_BASE_URL: "https://dev.realteeth.ai/mock"
+      APP_MOCK_API_KEY: ""   # evaluator can set or you can provide a manual way to issue it
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
