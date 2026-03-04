@@ -198,6 +198,19 @@ Test packages must mirror main packages.
 
 ---
 
+# 5. Git Commit Convention
+
+- Commit message format: `{type}: {message}`
+- Do not prepend branch name to commit message.
+- Use Korean for commit message content.
+- Keep message concise and focused on actual change.
+- Recommended types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
+
+Example:
+- `docs: API 계약 문서 정합성 수정`
+
+---
+
 # Progress Tracking
 
 The current implementation state is tracked in:

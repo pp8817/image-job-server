@@ -14,6 +14,14 @@ Codex must not invent requirements outside these docs.
 
 ---
 
+## Commit Convention
+- Use commit message format: `{type}: {message}`.
+- Do not prepend branch name to commit message.
+- Write commit message text in Korean.
+- Keep the message specific to the actual change.
+
+---
+
 ## Phase 0 — Bootstrap
 1) Create Spring Boot project (Kotlin, Gradle).
 2) Set base package: `ai.realteeth.imagejobserver`.

@@ -288,13 +288,14 @@ README includes all assignment design explanations.
 
 Update this section when work progresses.
 
-Last updated: 2026-03-04 14:56 UTC
+Last updated: 2026-03-04 15:16 UTC
 
 Current Phase: Phase 10 (Documentation)
 
 Completed:
 - Documentation consistency fixes (API contract, retry configurability, stale requeue batching, package naming consistency)
 - README baseline for assignment evaluation
+- Commit message convention documented (`{type}: {message}`, no branch-name prefix)
 
 In Progress:
 - Implementation phases (Phase 0-9)
