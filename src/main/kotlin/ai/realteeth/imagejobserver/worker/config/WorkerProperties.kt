@@ -10,5 +10,7 @@ data class WorkerProperties(
     var batchSize: Int = 5,
     var maxAttempts: Int = 3,
     var pollIntervalMs: Long = 1000,
+    var statusPollIntervalMs: Long = 2000,
+    var maxProcessingSeconds: Int = 1800,
     var threads: Int = 4,
 )

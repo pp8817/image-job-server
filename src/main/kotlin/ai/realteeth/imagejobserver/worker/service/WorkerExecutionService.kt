@@ -10,6 +10,7 @@ import ai.realteeth.imagejobserver.worker.config.WorkerProperties
 import ai.realteeth.imagejobserver.worker.repository.WorkerClaimRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.time.Duration
 import java.util.UUID
 
 @Service
@@ -23,7 +24,7 @@ class WorkerExecutionService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun execute(jobId: UUID) {
-        val job = jobService.findById(jobId) ?: return
+        var job = jobService.findById(jobId) ?: return
 
         if (job.status != JobStatus.RUNNING) {
             return
@@ -32,6 +33,8 @@ class WorkerExecutionService(
         if (job.lockedBy != workerProperties.id) {
             return
         }
+
+        val startedAtNanos = System.nanoTime()
 
         try {
             val externalJobId = if (job.externalJobId == null) {
@@ -44,29 +47,53 @@ class WorkerExecutionService(
                 job.externalJobId!!
             }
 
-            workerClaimRepository.extendLease(jobId, workerProperties.id, workerProperties.leaseSeconds)
-
-            val statusResponse = executeWithRetry(jobId) {
-                mockWorkerClient.getProcessStatus(externalJobId)
-            }
-
-            when (statusResponse.status) {
-                MockWorkerJobStatus.PROCESSING -> {
-                    workerClaimRepository.extendLease(jobId, workerProperties.id, workerProperties.leaseSeconds)
+            while (true) {
+                job = jobService.findById(jobId) ?: return
+                if (job.status != JobStatus.RUNNING || job.lockedBy != workerProperties.id) {
+                    return
                 }
 
-                MockWorkerJobStatus.COMPLETED -> {
-                    jobService.completeSucceeded(jobId, statusResponse.result ?: "")
-                }
-
-                MockWorkerJobStatus.FAILED -> {
-                    jobService.completeFailed(
-                        jobId = jobId,
-                        errorCode = JobErrorCode.MOCK_WORKER_FAILED,
-                        message = statusResponse.result ?: "Mock Worker returned FAILED",
+                if (isProcessingTimedOut(startedAtNanos)) {
+                    log.warn(
+                        "Processing timeout reached for job {}, abandon current execution for stale recovery",
+                        jobId,
                     )
+                    return
+                }
+
+                if (!safeExtendLease(jobId)) {
+                    log.warn("Lease extension failed for job {}, abandon current execution", jobId)
+                    return
+                }
+
+                val statusResponse = executeWithRetry(jobId) {
+                    mockWorkerClient.getProcessStatus(externalJobId)
+                }
+
+                when (statusResponse.status) {
+                    MockWorkerJobStatus.PROCESSING -> {
+                        if (!sleepNextPoll()) {
+                            return
+                        }
+                    }
+
+                    MockWorkerJobStatus.COMPLETED -> {
+                        jobService.completeSucceeded(jobId, statusResponse.result ?: "")
+                        return
+                    }
+
+                    MockWorkerJobStatus.FAILED -> {
+                        jobService.completeFailed(
+                            jobId = jobId,
+                            errorCode = JobErrorCode.MOCK_WORKER_FAILED,
+                            message = statusResponse.result ?: "Mock Worker returned FAILED",
+                        )
+                        return
+                    }
                 }
             }
+        } catch (ex: LeaseLostException) {
+            log.warn("Lease lost while running job {}, abandon current execution", jobId)
         } catch (ex: MockWorkerException) {
             log.warn("Worker failed for job {}: {}", jobId, ex.message, ex)
             jobService.completeFailed(
@@ -81,6 +108,31 @@ class WorkerExecutionService(
                 errorCode = JobErrorCode.INTERNAL,
                 message = ex.message ?: "Unexpected error",
             )
+        }
+    }
+
+    private fun isProcessingTimedOut(startedAtNanos: Long): Boolean {
+        val elapsedNanos = System.nanoTime() - startedAtNanos
+        val maxNanos = Duration.ofSeconds(workerProperties.maxProcessingSeconds.toLong()).toNanos()
+        return elapsedNanos >= maxNanos
+    }
+
+    private fun safeExtendLease(jobId: UUID): Boolean {
+        return try {
+            workerClaimRepository.extendLease(jobId, workerProperties.id, workerProperties.leaseSeconds)
+        } catch (ex: Exception) {
+            log.warn("Lease extension exception for job {}", jobId, ex)
+            false
+        }
+    }
+
+    private fun sleepNextPoll(): Boolean {
+        return try {
+            Thread.sleep(workerProperties.statusPollIntervalMs)
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
         }
     }
 
@@ -108,22 +160,21 @@ class WorkerExecutionService(
                     )
                 }
 
-                workerClaimRepository.extendLease(jobId, workerProperties.id, workerProperties.leaseSeconds)
+                if (!safeExtendLease(jobId)) {
+                    throw LeaseLostException()
+                }
 
                 try {
                     Thread.sleep(delayMs)
                 } catch (ie: InterruptedException) {
                     Thread.currentThread().interrupt()
-                    throw MockWorkerException(
-                        errorCode = JobErrorCode.INTERNAL,
-                        retryable = false,
-                        message = "Retry interrupted",
-                        cause = ie,
-                    )
+                    throw LeaseLostException(cause = ie)
                 }
 
                 delayMs = (delayMs * 2).coerceAtMost(8_000)
             }
         }
     }
+
+    private class LeaseLostException(cause: Throwable? = null) : RuntimeException(cause)
 }
