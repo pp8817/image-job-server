@@ -15,6 +15,7 @@ spring:
   sql:
     init:
       mode: always
+      separator: ";;"
       schema-locations: optional:classpath:db/schema.sql,optional:file:db/schema.sql
 
 app:

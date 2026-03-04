@@ -21,25 +21,25 @@ CREATE TABLE IF NOT EXISTS job (
 
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
+    );;
 
 -- Idempotency key uniqueness (nullable)
 CREATE UNIQUE INDEX IF NOT EXISTS ux_job_idempotency_key
     ON job (idempotency_key)
-    WHERE idempotency_key IS NOT NULL;
+    WHERE idempotency_key IS NOT NULL;;
 
 -- Fingerprint uniqueness (nullable)
 CREATE UNIQUE INDEX IF NOT EXISTS ux_job_fingerprint
     ON job (fingerprint)
-    WHERE fingerprint IS NOT NULL;
+    WHERE fingerprint IS NOT NULL;;
 
 -- Index for worker polling
 CREATE INDEX IF NOT EXISTS ix_job_status_created_at
-    ON job (status, created_at);
+    ON job (status, created_at);;
 
 -- Index for stale running jobs
 CREATE INDEX IF NOT EXISTS ix_job_status_locked_until
-    ON job (status, locked_until);
+    ON job (status, locked_until);;
 
 -- =========================
 -- 2) job_result table
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS job_result (
     error_message      TEXT NULL,
 
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
+    );;
 
 -- Ensure result is either success or failure (optional)
 -- success: result_payload NOT NULL AND error_code IS NULL
@@ -68,10 +68,10 @@ BEGIN
   NEW.updated_at = NOW();
 RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;;
 
-DROP TRIGGER IF EXISTS trg_job_updated_at ON job;
+DROP TRIGGER IF EXISTS trg_job_updated_at ON job;;
 
 CREATE TRIGGER trg_job_updated_at
     BEFORE UPDATE ON job
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();;

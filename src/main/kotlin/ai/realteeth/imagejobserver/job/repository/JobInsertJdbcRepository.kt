@@ -1,7 +1,6 @@
 package ai.realteeth.imagejobserver.job.repository
 
 import ai.realteeth.imagejobserver.job.domain.JobStatus
-import org.springframework.dao.DataAccessException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -28,13 +27,7 @@ class JobInsertJdbcRepository(
             .addValue("fingerprint", fingerprint)
 
         return if (supportsOnConflict()) {
-            try {
-                insertOrGetWithOnConflict(params)
-            } catch (_: DataAccessException) {
-                insertOrGetWithFallback(params)
-            } catch (_: IllegalStateException) {
-                insertOrGetWithFallback(params)
-            }
+            insertOrGetWithOnConflict(params)
         } else {
             insertOrGetWithFallback(params)
         }
@@ -49,43 +42,44 @@ class JobInsertJdbcRepository(
 
     private fun insertOrGetWithOnConflict(params: MapSqlParameterSource): InsertOrGetJobResult {
         val sql = """
-            WITH inserted AS (
-                INSERT INTO job (
-                    id,
-                    status,
-                    image_url,
-                    idempotency_key,
-                    fingerprint,
-                    attempt_count,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    :job_id,
-                    'RECEIVED',
-                    :image_url,
-                    :idempotency_key,
-                    :fingerprint,
-                    0,
-                    CURRENT_TIMESTAMP,
-                    CURRENT_TIMESTAMP
-                )
-                ON CONFLICT DO NOTHING
-                RETURNING id, status
+            INSERT INTO job (
+                id,
+                status,
+                image_url,
+                idempotency_key,
+                fingerprint,
+                attempt_count,
+                created_at,
+                updated_at
+            ) VALUES (
+                :job_id,
+                'RECEIVED',
+                :image_url,
+                :idempotency_key,
+                :fingerprint,
+                0,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
             )
-            SELECT i.id, i.status, TRUE AS created
-            FROM inserted i
-            UNION ALL
-            SELECT j.id, j.status, FALSE AS created
-            FROM job j
-            WHERE NOT EXISTS (SELECT 1 FROM inserted)
-              AND (
-                  (:idempotency_key IS NOT NULL AND j.idempotency_key = :idempotency_key)
-                  OR j.fingerprint = :fingerprint
-              )
-            LIMIT 1
+            ON CONFLICT DO NOTHING
+            RETURNING id, status
         """.trimIndent()
 
-        return querySingle(sql, params)
+        val inserted = jdbcTemplate.query(sql, params) { rs, _ ->
+            InsertOrGetJobResult(
+                jobId = rs.getObject("id", UUID::class.java),
+                status = JobStatus.valueOf(rs.getString("status")),
+                created = true,
+            )
+        }.firstOrNull()
+
+        if (inserted != null) {
+            return inserted
+        }
+
+        // Another transaction may have inserted the same key/fingerprint and committed just after
+        // this statement snapshot. Retry short lookup to absorb that visibility race.
+        return findExistingWithRetry(params)
     }
 
     private fun insertOrGetWithFallback(params: MapSqlParameterSource): InsertOrGetJobResult {
@@ -119,30 +113,63 @@ class JobInsertJdbcRepository(
                 created = true,
             )
         } catch (_: DataIntegrityViolationException) {
-            val findSql = """
-                SELECT id, status
-                FROM job
-                WHERE (
-                    (:idempotency_key IS NOT NULL AND idempotency_key = :idempotency_key)
-                    OR fingerprint = :fingerprint
-                )
-                LIMIT 1
-            """.trimIndent()
-            querySingle(findSql, params, created = false)
+            findExistingWithRetry(params)
         }
     }
 
-    private fun querySingle(
-        sql: String,
+    private fun findExistingWithRetry(
         params: MapSqlParameterSource,
-        created: Boolean? = null,
     ): InsertOrGetJobResult {
-        return jdbcTemplate.query(sql, params) { rs, _ ->
+        repeat(20) { index ->
+            findExisting(params)?.let { return it }
+
+            if (index < 19) {
+                try {
+                    Thread.sleep(10)
+                } catch (ie: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw IllegalStateException("Interrupted while waiting for duplicate row visibility", ie)
+                }
+            }
+        }
+
+        throw IllegalStateException("Failed to insert or retrieve job")
+    }
+
+    private fun findExisting(params: MapSqlParameterSource): InsertOrGetJobResult? {
+        val idempotencyKey = params.getValue("idempotency_key") as String?
+        val fingerprint = params.getValue("fingerprint") as String
+
+        val findSql: String
+        val findParams: MapSqlParameterSource
+        if (idempotencyKey.isNullOrBlank()) {
+            findSql = """
+                SELECT id, status
+                FROM job
+                WHERE fingerprint = :fingerprint
+                LIMIT 1
+            """.trimIndent()
+            findParams = MapSqlParameterSource()
+                .addValue("fingerprint", fingerprint)
+        } else {
+            findSql = """
+                SELECT id, status
+                FROM job
+                WHERE idempotency_key = :idempotency_key
+                   OR fingerprint = :fingerprint
+                LIMIT 1
+            """.trimIndent()
+            findParams = MapSqlParameterSource()
+                .addValue("idempotency_key", idempotencyKey)
+                .addValue("fingerprint", fingerprint)
+        }
+
+        return jdbcTemplate.query(findSql, findParams) { rs, _ ->
             InsertOrGetJobResult(
                 jobId = rs.getObject("id", UUID::class.java),
                 status = JobStatus.valueOf(rs.getString("status")),
-                created = created ?: rs.getBoolean("created"),
+                created = false,
             )
-        }.firstOrNull() ?: throw IllegalStateException("Failed to insert or retrieve job")
+        }.firstOrNull()
     }
 }

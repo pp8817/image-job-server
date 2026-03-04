@@ -24,7 +24,7 @@ class WebClientMockWorkerClient(
     override fun issueKey(candidateName: String, email: String): IssueKeyResponse {
         return execute {
             mockWorkerWebClient.post()
-                .uri("/mock/auth/issue-key")
+                .uri("/auth/issue-key")
                 .bodyValue(IssueKeyRequest(candidateName, email))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError) { response ->
@@ -44,7 +44,7 @@ class WebClientMockWorkerClient(
     override fun startProcess(imageUrl: String): ProcessStartResponse {
         return execute {
             mockWorkerWebClient.post()
-                .uri("/mock/process")
+                .uri("/process")
                 .headers {
                     if (properties.apiKey.isNotBlank()) {
                         it.set("X-API-KEY", properties.apiKey)
@@ -69,7 +69,7 @@ class WebClientMockWorkerClient(
     override fun getProcessStatus(externalJobId: String): ProcessStatusResponse {
         return execute {
             mockWorkerWebClient.get()
-                .uri("/mock/process/{job_id}", externalJobId)
+                .uri("/process/{job_id}", externalJobId)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError) { response ->
                     response.bodyToMono(MockWorkerErrorResponse::class.java)
