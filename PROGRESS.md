@@ -290,7 +290,7 @@ README includes all assignment design explanations.
 
 Update this section when work progresses.
 
-Last updated: 2026-03-05 02:00 KST
+Last updated: 2026-03-09 16:35 KST
 
 Current Phase: Phase 10 (Documentation) - Completed
 
@@ -310,6 +310,12 @@ Completed:
 - `APP_MOCK_API_KEY` 미설정 시 `/mock/auth/issue-key` 자동 발급(지연 호출) 및 캐시 재사용 반영
 - heartbeat/timeout/stale exhausted/auto issue-key 테스트 추가 및 통과
 - heartbeat 보완 반영 이후 `docker compose up --build` 스모크 재검증 통과 (GET `/jobs`, POST `/jobs`, GET `/jobs/{jobId}`)
+- `SUCCEEDED` 상태에서 결과 row 누락 시 `500`으로 노출하도록 무결성 검증 강화
+- `JobInsertJdbcRepository`의 ON CONFLICT 지원 판별을 캐시해 요청 경로 DB 메타데이터 조회 제거
+- Mock Worker 클라이언트 계층을 raw/authenticated/provider로 분리하고 issue-key 호출 중복 제거
+- 워커 실행 책임을 lease/retry/process runner로 분리하고 `WorkerExecutionService`를 orchestration entrypoint로 축소
+- worker claim SQL 로딩을 statement별 파일 분리 구조로 변경해 세미콜론 파싱 의존 제거
+- Mock Worker 설정 키 우선 사용 회귀 테스트 추가
 
 In Progress:
 - None

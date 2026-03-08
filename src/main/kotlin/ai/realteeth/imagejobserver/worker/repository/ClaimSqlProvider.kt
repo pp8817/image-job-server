@@ -1,64 +1,40 @@
 package ai.realteeth.imagejobserver.worker.repository
 
-import jakarta.annotation.PostConstruct
 import org.springframework.core.io.ClassPathResource
 import org.springframework.core.io.FileSystemResource
 import org.springframework.stereotype.Component
+import java.util.concurrent.ConcurrentHashMap
 
 @Component
 class ClaimSqlProvider {
 
-    private lateinit var _claimQueuedSql: String
-
-    private lateinit var _requeueStaleSql: String
-
-    private lateinit var _extendLeaseSql: String
-
-    private lateinit var _selectStaleExhaustedSql: String
-
     val claimQueuedSql: String
-        get() = _claimQueuedSql
+        get() = loadSql("db/claim-queued.sql")
 
     val requeueStaleSql: String
-        get() = _requeueStaleSql
+        get() = loadSql("db/requeue-stale.sql")
 
     val extendLeaseSql: String
-        get() = _extendLeaseSql
+        get() = loadSql("db/extend-lease.sql")
 
     val selectStaleExhaustedSql: String
-        get() = _selectStaleExhaustedSql
+        get() = loadSql("db/select-stale-exhausted.sql")
 
-    @PostConstruct
-    fun init() {
-        val script = loadScript()
-        val statements = script
-            .lineSequence()
-            .filterNot { it.trim().startsWith("--") }
-            .joinToString("\n")
-            .split(';')
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .map { "$it;" }
+    private val cache = ConcurrentHashMap<String, String>()
 
-        require(statements.size >= 4) { "db/claim.sql must contain at least 4 SQL statements" }
+    private fun loadSql(path: String): String {
+        return cache.getOrPut(path) {
+            val fileResource = FileSystemResource(path)
+            if (fileResource.exists()) {
+                return@getOrPut fileResource.inputStream.bufferedReader().use { it.readText() }
+            }
 
-        _claimQueuedSql = statements[0]
-        _requeueStaleSql = statements[1]
-        _extendLeaseSql = statements[2]
-        _selectStaleExhaustedSql = statements[3]
-    }
+            val classPathResource = ClassPathResource(path)
+            if (classPathResource.exists()) {
+                return@getOrPut classPathResource.inputStream.bufferedReader().use { it.readText() }
+            }
 
-    private fun loadScript(): String {
-        val fileResource = FileSystemResource("db/claim.sql")
-        if (fileResource.exists()) {
-            return fileResource.inputStream.bufferedReader().use { it.readText() }
+            throw IllegalStateException("Unable to find $path")
         }
-
-        val classPathResource = ClassPathResource("db/claim.sql")
-        if (classPathResource.exists()) {
-            return classPathResource.inputStream.bufferedReader().use { it.readText() }
-        }
-
-        throw IllegalStateException("Unable to find db/claim.sql")
     }
 }
