@@ -2,7 +2,8 @@ package ai.realteeth.imagejobserver.client.mockworker
 
 import ai.realteeth.imagejobserver.client.mockworker.dto.IssueKeyRequest
 import ai.realteeth.imagejobserver.client.mockworker.dto.IssueKeyResponse
-import ai.realteeth.imagejobserver.client.mockworker.dto.MockWorkerErrorResponse
+import ai.realteeth.imagejobserver.client.mockworker.dto.MockWorkerErrorParser
+import com.fasterxml.jackson.databind.ObjectMapper
 import ai.realteeth.imagejobserver.job.domain.JobErrorCode
 import org.springframework.http.HttpStatusCode
 import org.springframework.stereotype.Component
@@ -17,9 +18,14 @@ import java.util.concurrent.atomic.AtomicReference
 class MockApiKeyProvider(
     private val mockWorkerWebClient: WebClient,
     private val properties: MockWorkerProperties,
+    private val objectMapper: ObjectMapper,
 ) {
 
     private val cachedIssuedApiKey = AtomicReference<String?>()
+
+    fun invalidateCachedApiKey() {
+        cachedIssuedApiKey.set(null)
+    }
 
     fun resolveApiKey(): String? {
         val configured = properties.apiKey.trim()
@@ -53,9 +59,9 @@ class MockApiKeyProvider(
                 )
                 .retrieve()
                 .onStatus(HttpStatusCode::isError) { response ->
-                    response.bodyToMono(MockWorkerErrorResponse::class.java)
-                        .defaultIfEmpty(MockWorkerErrorResponse("Mock Worker error"))
-                        .flatMap { Mono.error(toException(response.statusCode().value(), it.detail)) }
+                    response.bodyToMono(String::class.java)
+                        .defaultIfEmpty("")
+                        .flatMap { Mono.error(toException(response.statusCode().value(), extractDetail(it))) }
                 }
                 .bodyToMono(IssueKeyResponse::class.java)
                 .block()
@@ -88,6 +94,12 @@ class MockApiKeyProvider(
                 )
             }
         }
+    }
+
+    private fun extractDetail(body: String): String {
+        return runCatching { objectMapper.readTree(body) }
+            .map(MockWorkerErrorParser::extractDetail)
+            .getOrElse { body.ifBlank { "Mock Worker error" } }
     }
 
     private fun toException(statusCode: Int, detail: String): MockWorkerException {
