@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS job (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );;
 
+ALTER TABLE job ADD COLUMN IF NOT EXISTS next_poll_at TIMESTAMPTZ;;
+ALTER TABLE job ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;;
+
 -- Idempotency key uniqueness (nullable)
 CREATE UNIQUE INDEX IF NOT EXISTS ux_job_idempotency_key
     ON job (idempotency_key)
