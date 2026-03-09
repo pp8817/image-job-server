@@ -15,8 +15,6 @@ interface JobJpaRepository : JpaRepository<JobEntity, UUID> {
 
     fun findByIdempotencyKey(idempotencyKey: String): JobEntity?
 
-    fun findByFingerprint(fingerprint: String): JobEntity?
-
     fun findAllByStatus(status: JobStatus, pageable: Pageable): Page<JobEntity>
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

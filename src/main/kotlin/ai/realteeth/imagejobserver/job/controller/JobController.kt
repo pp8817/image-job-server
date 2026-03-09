@@ -1,5 +1,6 @@
 package ai.realteeth.imagejobserver.job.controller
 
+import ai.realteeth.imagejobserver.global.exception.BadRequestException
 import ai.realteeth.imagejobserver.job.controller.dto.CreateJobRequest
 import ai.realteeth.imagejobserver.job.controller.dto.CreateJobResponse
 import ai.realteeth.imagejobserver.job.controller.dto.FailureResultResponse
@@ -42,7 +43,10 @@ class JobController(
         @Valid @RequestBody request: CreateJobRequest,
         @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
     ): ResponseEntity<CreateJobResponse> {
-        val response = jobService.createJob(request.imageUrl, idempotencyKey)
+        val requiredIdempotencyKey = idempotencyKey?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: throw BadRequestException("Idempotency-Key header is required")
+        val response = jobService.createJob(request.imageUrl, requiredIdempotencyKey)
         val status = if (response.deduped) HttpStatus.OK else HttpStatus.CREATED
         return ResponseEntity.status(status).body(response.toResponse())
     }

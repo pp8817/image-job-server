@@ -28,9 +28,6 @@ class JobEntity(
     @Column(name = "idempotency_key", length = 128, unique = true)
     var idempotencyKey: String? = null,
 
-    @Column(name = "fingerprint", length = 64, unique = true)
-    var fingerprint: String? = null,
-
     @Column(name = "external_job_id", length = 128)
     var externalJobId: String? = null,
 

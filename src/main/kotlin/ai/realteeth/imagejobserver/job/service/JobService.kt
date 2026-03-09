@@ -2,7 +2,6 @@ package ai.realteeth.imagejobserver.job.service
 
 import ai.realteeth.imagejobserver.global.exception.DataIntegrityException
 import ai.realteeth.imagejobserver.global.exception.ResourceNotFoundException
-import ai.realteeth.imagejobserver.global.util.HashUtils
 import ai.realteeth.imagejobserver.global.util.ProgressMapper
 import ai.realteeth.imagejobserver.job.domain.JobEntity
 import ai.realteeth.imagejobserver.job.domain.JobErrorCode
@@ -27,15 +26,11 @@ class JobService(
 ) {
 
     @Transactional
-    fun createJob(imageUrl: String, idempotencyKey: String?): CreateJobResult {
-        val normalizedKey = idempotencyKey?.trim()?.takeIf { it.isNotBlank() }
-        val fingerprint = HashUtils.sha256(imageUrl)
-
+    fun createJob(imageUrl: String, idempotencyKey: String): CreateJobResult {
         val insertResult = jobInsertRepository.insertOrGet(
             jobId = UUID.randomUUID(),
             imageUrl = imageUrl,
-            idempotencyKey = normalizedKey,
-            fingerprint = fingerprint,
+            idempotencyKey = idempotencyKey,
         )
 
         if (!insertResult.created) {

@@ -14,7 +14,6 @@ interface JobInsertRepository {
     fun insertOrGet(
         jobId: UUID,
         imageUrl: String,
-        idempotencyKey: String?,
-        fingerprint: String,
+        idempotencyKey: String,
     ): InsertOrGetJobResult
 }

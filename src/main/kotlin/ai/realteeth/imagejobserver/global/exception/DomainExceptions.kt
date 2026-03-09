@@ -4,4 +4,6 @@ class ResourceNotFoundException(message: String) : RuntimeException(message)
 
 class IllegalStateTransitionException(message: String) : RuntimeException(message)
 
+class BadRequestException(message: String) : RuntimeException(message)
+
 class DataIntegrityException(message: String) : RuntimeException(message)

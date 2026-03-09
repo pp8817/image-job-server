@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS job (
     image_url           TEXT NOT NULL,
 
     idempotency_key     VARCHAR(128) NULL,
-    fingerprint         VARCHAR(64)  NULL,
 
     external_job_id     VARCHAR(128) NULL, -- Mock Worker jobId
 
@@ -33,10 +32,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_job_idempotency_key
     ON job (idempotency_key)
     WHERE idempotency_key IS NOT NULL;;
 
--- Fingerprint uniqueness (nullable)
-CREATE UNIQUE INDEX IF NOT EXISTS ux_job_fingerprint
-    ON job (fingerprint)
-    WHERE fingerprint IS NOT NULL;;
+DROP INDEX IF EXISTS ux_job_fingerprint;;
+ALTER TABLE job DROP COLUMN IF EXISTS fingerprint;;
 
 -- Index for worker polling
 CREATE INDEX IF NOT EXISTS ix_job_status_created_at

@@ -24,14 +24,12 @@ class JobInsertJdbcRepository(
     override fun insertOrGet(
         jobId: UUID,
         imageUrl: String,
-        idempotencyKey: String?,
-        fingerprint: String,
+        idempotencyKey: String,
     ): InsertOrGetJobResult {
         val params = MapSqlParameterSource()
             .addValue("job_id", jobId)
             .addValue("image_url", imageUrl)
             .addValue("idempotency_key", idempotencyKey)
-            .addValue("fingerprint", fingerprint)
 
         return if (supportsOnConflict) {
             insertOrGetWithOnConflict(params)
@@ -47,7 +45,6 @@ class JobInsertJdbcRepository(
                 status,
                 image_url,
                 idempotency_key,
-                fingerprint,
                 attempt_count,
                 created_at,
                 updated_at
@@ -56,7 +53,6 @@ class JobInsertJdbcRepository(
                 'RECEIVED',
                 :image_url,
                 :idempotency_key,
-                :fingerprint,
                 0,
                 CURRENT_TIMESTAMP,
                 CURRENT_TIMESTAMP
@@ -77,7 +73,7 @@ class JobInsertJdbcRepository(
             return inserted
         }
 
-        // Another transaction may have inserted the same key/fingerprint and committed just after
+        // Another transaction may have inserted the same key and committed just after
         // this statement snapshot. Retry short lookup to absorb that visibility race.
         return findExistingWithRetry(params)
     }
@@ -89,7 +85,6 @@ class JobInsertJdbcRepository(
                 status,
                 image_url,
                 idempotency_key,
-                fingerprint,
                 attempt_count,
                 created_at,
                 updated_at
@@ -98,7 +93,6 @@ class JobInsertJdbcRepository(
                 'RECEIVED',
                 :image_url,
                 :idempotency_key,
-                :fingerprint,
                 0,
                 CURRENT_TIMESTAMP,
                 CURRENT_TIMESTAMP
@@ -137,32 +131,15 @@ class JobInsertJdbcRepository(
     }
 
     private fun findExisting(params: MapSqlParameterSource): InsertOrGetJobResult? {
-        val idempotencyKey = params.getValue("idempotency_key") as String?
-        val fingerprint = params.getValue("fingerprint") as String
-
-        val findSql: String
-        val findParams: MapSqlParameterSource
-        if (idempotencyKey.isNullOrBlank()) {
-            findSql = """
-                SELECT id, status
-                FROM job
-                WHERE fingerprint = :fingerprint
-                LIMIT 1
-            """.trimIndent()
-            findParams = MapSqlParameterSource()
-                .addValue("fingerprint", fingerprint)
-        } else {
-            findSql = """
-                SELECT id, status
-                FROM job
-                WHERE idempotency_key = :idempotency_key
-                   OR fingerprint = :fingerprint
-                LIMIT 1
-            """.trimIndent()
-            findParams = MapSqlParameterSource()
-                .addValue("idempotency_key", idempotencyKey)
-                .addValue("fingerprint", fingerprint)
-        }
+        val idempotencyKey = params.getValue("idempotency_key") as String
+        val findSql = """
+            SELECT id, status
+            FROM job
+            WHERE idempotency_key = :idempotency_key
+            LIMIT 1
+        """.trimIndent()
+        val findParams = MapSqlParameterSource()
+            .addValue("idempotency_key", idempotencyKey)
 
         return jdbcTemplate.query(findSql, findParams) { rs, _ ->
             InsertOrGetJobResult(
