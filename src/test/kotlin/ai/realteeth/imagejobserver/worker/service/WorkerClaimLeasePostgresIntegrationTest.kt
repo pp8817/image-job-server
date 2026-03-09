@@ -216,7 +216,7 @@ class WorkerClaimLeasePostgresIntegrationTest : PostgresContainerSupport() {
             id = UUID.randomUUID(),
             status = JobStatus.QUEUED,
             imageUrl = "https://example.com/postgres-claim.png",
-            fingerprint = UUID.randomUUID().toString().replace("-", ""),
+            idempotencyKey = UUID.randomUUID().toString(),
             attemptCount = 0,
         )
         return jobRepository.saveAndFlush(entity).id
@@ -227,7 +227,7 @@ class WorkerClaimLeasePostgresIntegrationTest : PostgresContainerSupport() {
             id = UUID.randomUUID(),
             status = JobStatus.RUNNING,
             imageUrl = "https://example.com/postgres-running.png",
-            fingerprint = UUID.randomUUID().toString().replace("-", ""),
+            idempotencyKey = UUID.randomUUID().toString(),
             attemptCount = attemptCount,
             lockedBy = "worker-1",
             lockedUntil = lockedUntil,

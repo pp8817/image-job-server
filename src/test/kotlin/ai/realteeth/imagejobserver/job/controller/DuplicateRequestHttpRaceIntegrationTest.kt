@@ -62,16 +62,17 @@ class DuplicateRequestHttpRaceIntegrationTest : PostgresContainerSupport() {
     }
 
     @Test
-    fun `Idempotency-Key 없이 동일 imageUrl 동시 요청도 HTTP 레벨에서 단일 job만 생성된다`() {
+    fun `동일 imageUrl이어도 서로 다른 Idempotency-Key 동시 요청은 각각 별도 job을 생성한다`() {
         val threadCount = 8
-        val responses = runConcurrentCreateRequests(
+        val responses = runConcurrentCreateRequestsWithDistinctKeys(
             threadCount = threadCount,
-            imageUrl = "https://example.com/http-race-fingerprint.png",
-            idempotencyKey = null,
+            imageUrl = "https://example.com/http-race-distinct-keys.png",
         )
 
-        assertCreatedAndDedupedResponses(responses, threadCount)
-        assertEquals(1L, jobRepository.count())
+        assertEquals(threadCount, responses.size)
+        assertEquals(threadCount, responses.count { it.statusCode == 201 })
+        assertEquals(threadCount, responses.map { it.jobId }.toSet().size)
+        assertEquals(threadCount.toLong(), jobRepository.count())
     }
 
     private fun runConcurrentCreateRequests(
@@ -97,6 +98,40 @@ class DuplicateRequestHttpRaceIntegrationTest : PostgresContainerSupport() {
                             jobId = json.path("jobId").asText(),
                         ),
                     )
+                } catch (t: Throwable) {
+                    errors.add(t)
+                } finally {
+                    doneLatch.countDown()
+                }
+            }
+        }
+
+        startLatch.countDown()
+        val finished = doneLatch.await(40, TimeUnit.SECONDS)
+        executor.shutdownNow()
+
+        assertTrue(finished, "모든 HTTP 요청 스레드가 종료되어야 합니다")
+        assertTrue(errors.isEmpty(), "HTTP 요청 처리 중 예외가 없어야 합니다: $errors")
+        return responses.toList()
+    }
+
+    private fun runConcurrentCreateRequestsWithDistinctKeys(
+        threadCount: Int,
+        imageUrl: String,
+    ): List<ResponseSnapshot> {
+        val executor = Executors.newFixedThreadPool(threadCount)
+        val startLatch = CountDownLatch(1)
+        val doneLatch = CountDownLatch(threadCount)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        val responses = Collections.synchronizedList(mutableListOf<ResponseSnapshot>())
+
+        repeat(threadCount) { index ->
+            executor.submit {
+                try {
+                    startLatch.await(5, TimeUnit.SECONDS)
+                    val response = postJob(imageUrl, "idem-distinct-$index")
+                    val json = objectMapper.readTree(response.body())
+                    responses.add(ResponseSnapshot(response.statusCode(), json.path("jobId").asText()))
                 } catch (t: Throwable) {
                     errors.add(t)
                 } finally {

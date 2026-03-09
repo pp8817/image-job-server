@@ -83,7 +83,7 @@ class JobControllerIntegrationTest {
                 id = UUID.randomUUID(),
                 status = JobStatus.SUCCEEDED,
                 imageUrl = "https://example.com/succeeded-no-result.png",
-                fingerprint = UUID.randomUUID().toString().replace("-", ""),
+                idempotencyKey = "idem-succeeded-no-result",
             ),
         ).id
 
@@ -104,5 +104,36 @@ class JobControllerIntegrationTest {
 
         mockMvc.perform(get("/jobs").param("size", "101"))
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `Idempotency-Key 헤더가 없으면 400을 반환한다`() {
+        val requestBody = """
+            {
+              "imageUrl": "https://example.com/image.png"
+            }
+        """.trimIndent()
+
+        mockMvc.perform(
+            post("/jobs")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody),
+        ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `빈 Idempotency-Key 헤더면 400을 반환한다`() {
+        val requestBody = """
+            {
+              "imageUrl": "https://example.com/image.png"
+            }
+        """.trimIndent()
+
+        mockMvc.perform(
+            post("/jobs")
+                .header("Idempotency-Key", "   ")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestBody),
+        ).andExpect(status().isBadRequest)
     }
 }

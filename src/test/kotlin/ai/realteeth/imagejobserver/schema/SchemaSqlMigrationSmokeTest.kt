@@ -12,16 +12,18 @@ import java.sql.Connection
 class SchemaSqlMigrationSmokeTest {
 
     @Test
-    fun `기존 job 테이블에도 next_poll_at과 processing_started_at 컬럼이 idempotent하게 보강된다`() {
+    fun `기존 job 테이블에도 polling 컬럼을 보강하고 fingerprint 컬럼은 제거한다`() {
         postgres.createConnection("").use { connection ->
             applyLegacySchema(connection)
             applyCurrentSchema(connection)
             assertColumnExists(connection, "job", "next_poll_at")
             assertColumnExists(connection, "job", "processing_started_at")
+            assertColumnNotExists(connection, "job", "fingerprint")
 
             applyCurrentSchema(connection)
             assertColumnExists(connection, "job", "next_poll_at")
             assertColumnExists(connection, "job", "processing_started_at")
+            assertColumnNotExists(connection, "job", "fingerprint")
         }
     }
 
@@ -70,6 +72,16 @@ class SchemaSqlMigrationSmokeTest {
     }
 
     private fun assertColumnExists(connection: Connection, table: String, column: String) {
+        val exists = hasColumn(connection, table, column)
+        assertTrue(exists, "Expected column $column to exist on $table")
+    }
+
+    private fun assertColumnNotExists(connection: Connection, table: String, column: String) {
+        val exists = hasColumn(connection, table, column)
+        assertTrue(!exists, "Expected column $column to be removed from $table")
+    }
+
+    private fun hasColumn(connection: Connection, table: String, column: String): Boolean {
         val exists = connection.prepareStatement(
             """
             SELECT 1
@@ -82,8 +94,7 @@ class SchemaSqlMigrationSmokeTest {
             ps.setString(2, column)
             ps.executeQuery().use { rs -> rs.next() }
         }
-
-        assertTrue(exists, "Expected column $column to exist on $table")
+        return exists
     }
 
     companion object {

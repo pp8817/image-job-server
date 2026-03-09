@@ -1,6 +1,5 @@
 package ai.realteeth.imagejobserver.job.service
 
-import ai.realteeth.imagejobserver.global.util.HashUtils
 import ai.realteeth.imagejobserver.job.domain.JobEntity
 import ai.realteeth.imagejobserver.job.domain.JobStatus
 import ai.realteeth.imagejobserver.job.repository.InsertOrGetJobResult
@@ -11,10 +10,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
@@ -30,7 +27,7 @@ class JobServiceIdempotencyTest {
     private val jobService = JobService(jobRepository, jobResultRepository, jobInsertRepository)
 
     @Test
-    fun `idempotency key가 있으면 insertOrGet에 key와 fingerprint가 전달된다`() {
+    fun `idempotency key가 있으면 insertOrGet에 key가 전달된다`() {
         val imageUrl = "https://example.com/a.png"
         val existingId = UUID.randomUUID()
         whenever(
@@ -38,7 +35,6 @@ class JobServiceIdempotencyTest {
                 jobId = any(),
                 imageUrl = eq(imageUrl),
                 idempotencyKey = eq("idem-1"),
-                fingerprint = eq(HashUtils.sha256(imageUrl)),
             ),
         ).thenReturn(
             InsertOrGetJobResult(
@@ -56,41 +52,38 @@ class JobServiceIdempotencyTest {
             jobId = any(),
             imageUrl = eq(imageUrl),
             idempotencyKey = eq("idem-1"),
-            fingerprint = eq(HashUtils.sha256(imageUrl)),
         )
         verifyNoInteractions(jobRepository)
     }
 
     @Test
-    fun `idempotency key가 없으면 fingerprint 기반으로 insertOrGet이 호출된다`() {
+    fun `동일 imageUrl라도 다른 idempotency key면 서로 다른 요청으로 처리된다`() {
         val imageUrl = "https://example.com/b.png"
-        val existingId = UUID.randomUUID()
+        val firstId = UUID.randomUUID()
+        val secondId = UUID.randomUUID()
         whenever(
             jobInsertRepository.insertOrGet(
                 jobId = any(),
                 imageUrl = eq(imageUrl),
-                idempotencyKey = anyOrNull(),
-                fingerprint = eq(HashUtils.sha256(imageUrl)),
+                idempotencyKey = eq("idem-1"),
             ),
-        ).thenReturn(
-            InsertOrGetJobResult(
-                jobId = existingId,
-                status = JobStatus.QUEUED,
-                created = false,
+        ).thenReturn(InsertOrGetJobResult(jobId = firstId, status = JobStatus.RECEIVED, created = true))
+        whenever(
+            jobInsertRepository.insertOrGet(
+                jobId = any(),
+                imageUrl = eq(imageUrl),
+                idempotencyKey = eq("idem-2"),
             ),
-        )
+        ).thenReturn(InsertOrGetJobResult(jobId = secondId, status = JobStatus.RECEIVED, created = true))
+        whenever(jobRepository.findById(firstId)).thenReturn(Optional.of(JobEntity(id = firstId, status = JobStatus.RECEIVED, imageUrl = imageUrl, idempotencyKey = "idem-1")))
+        whenever(jobRepository.findById(secondId)).thenReturn(Optional.of(JobEntity(id = secondId, status = JobStatus.RECEIVED, imageUrl = imageUrl, idempotencyKey = "idem-2")))
 
-        val response = jobService.createJob(imageUrl, null)
+        val firstResponse = jobService.createJob(imageUrl, "idem-1")
+        val secondResponse = jobService.createJob(imageUrl, "idem-2")
 
-        assertTrue(response.deduped)
-        assertEquals(existingId, response.jobId)
-        verify(jobInsertRepository).insertOrGet(
-            jobId = any(),
-            imageUrl = eq(imageUrl),
-            idempotencyKey = anyOrNull(),
-            fingerprint = eq(HashUtils.sha256(imageUrl)),
-        )
-        verify(jobRepository, never()).saveAndFlush(any())
+        assertEquals(false, firstResponse.deduped)
+        assertEquals(false, secondResponse.deduped)
+        assertTrue(firstResponse.jobId != secondResponse.jobId)
     }
 
     @Test
@@ -101,8 +94,7 @@ class JobServiceIdempotencyTest {
             jobInsertRepository.insertOrGet(
                 jobId = any(),
                 imageUrl = eq(imageUrl),
-                idempotencyKey = anyOrNull(),
-                fingerprint = eq(HashUtils.sha256(imageUrl)),
+                idempotencyKey = eq("idem-created"),
             ),
         ).thenReturn(
             InsertOrGetJobResult(
@@ -116,10 +108,11 @@ class JobServiceIdempotencyTest {
             id = createdId,
             status = JobStatus.RECEIVED,
             imageUrl = imageUrl,
+            idempotencyKey = "idem-created",
         )
         whenever(jobRepository.findById(createdId)).thenReturn(Optional.of(createdEntity))
 
-        val response = jobService.createJob(imageUrl, null)
+        val response = jobService.createJob(imageUrl, "idem-created")
 
         assertEquals(false, response.deduped)
         assertEquals(JobStatus.RECEIVED, response.status)

@@ -35,7 +35,7 @@ class DuplicateRequestRaceIntegrationTest {
     }
 
     @Test
-    fun `동일 payload 동시 요청에서도 job row는 하나만 생성된다`() {
+    fun `동일 idempotency key 동시 요청에서도 job row는 하나만 생성된다`() {
         val threadCount = 8
         val executor = Executors.newFixedThreadPool(8)
         val startLatch = CountDownLatch(1)
@@ -47,7 +47,7 @@ class DuplicateRequestRaceIntegrationTest {
             executor.submit {
                 try {
                     startLatch.await(5, TimeUnit.SECONDS)
-                    val response = jobService.createJob("https://example.com/race.png", null)
+                    val response = jobService.createJob("https://example.com/race.png", "idem-race-service")
                     jobIds.add(response.jobId.toString())
                 } catch (t: Throwable) {
                     errors.add(t)
