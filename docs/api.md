@@ -6,7 +6,7 @@ Base path: `/`
 POST `/jobs`
 
 Headers:
-- `Idempotency-Key` (optional, preferred)
+- `Idempotency-Key` (required)
 
 Request JSON:
 ```json
@@ -32,6 +32,9 @@ Response (200 OK, duplicate request):
   "deduped": true
 }
 ```
+
+Response (400 Bad Request):
+- missing or blank `Idempotency-Key`
 
 ## 2) Get Job Status
 

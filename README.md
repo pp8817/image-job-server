@@ -51,14 +51,14 @@
 ## 3. 동시 요청 처리 전략
 
 중복 요청 방지 전략:
-- `Idempotency-Key` 헤더를 우선 사용
-- 헤더가 없으면 `sha256(imageUrl)` fingerprint 사용
+- `POST /jobs`는 `Idempotency-Key` 헤더가 필수입니다.
+- 같은 이미지를 다시 처리하고 싶다면 다른 `Idempotency-Key`를 보내야 합니다.
 - DB 유니크 제약으로 최종 중복 차단
   - `UNIQUE(idempotency_key) WHERE idempotency_key IS NOT NULL`
-  - `UNIQUE(fingerprint) WHERE fingerprint IS NOT NULL`
 - 삽입 경합은 `ON CONFLICT` 기반 upsert/조회 패턴으로 기존 `jobId`를 반환하도록 설계
 
 레이스 컨디션 대응:
+- 같은 이미지 URL이라도 서로 다른 처리 의도일 수 있으므로 서버가 `imageUrl`만으로 같은 요청을 추론하지 않습니다.
 - 애플리케이션 레벨 체크만으로는 동시성 경합을 완전히 막을 수 없으므로 DB 제약을 최종 방어선으로 사용합니다.
 
 ## 4. 트래픽 병목과 대응

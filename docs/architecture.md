@@ -44,12 +44,10 @@ Mapping:
 
 ## 5. Duplicate Requests (Idempotency)
 We support duplicates:
-- Preferred: `Idempotency-Key` header (client provided UUID)
-- Fallback: fingerprint = sha256(imageUrl)
+- Required: `Idempotency-Key` header (client provided unique key)
 
 DB enforces uniqueness:
 - UNIQUE(idempotency_key) where not null
-- UNIQUE(fingerprint)
 
 Behavior:
 - If duplicate detected, return existing jobId (no new job created).

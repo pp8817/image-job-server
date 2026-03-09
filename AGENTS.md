@@ -73,8 +73,7 @@ Uses header `X-API-KEY` for authenticated requests.
 
 5) Duplicate request handling:
 
-- Support `Idempotency-Key` header (preferred).
-- Fallback fingerprint `sha256(imageUrl)` if header not provided.
+- Require `Idempotency-Key` header on `POST /jobs`.
 - On duplicates, return existing `jobId` without creating a new job.
 
 6) State model:

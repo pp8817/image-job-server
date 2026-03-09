@@ -61,7 +61,6 @@ Tasks:
 - [x] Implement JobResultRepository
 - [x] Validate unique constraints
     - idempotency_key
-    - fingerprint
 - [x] Add entity tests
 
 Completion criteria:
@@ -88,7 +87,6 @@ Tasks:
 - [x] Implement JobService
 - [x] Implement request validation
 - [x] Implement idempotency handling
-- [x] Implement fingerprint fallback
 
 Tests:
 

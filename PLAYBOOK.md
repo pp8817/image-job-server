@@ -100,7 +100,7 @@ Validation:
 ## Phase 5 — Tests
 Must include:
 1) Unit: state transition guard
-2) Unit: idempotency + fingerprint selection
+2) Unit: idempotency key validation + duplicate selection
 3) Integration: worker succeeds path (mock COMPLETED)
 4) Integration: worker failure path (mock FAILED)
 5) Concurrency: multi-thread POST /jobs same payload -> single job row
@@ -151,8 +151,7 @@ Explain exponential backoff.
 
 ### 3. Concurrent Request Handling
 Explain duplicate request strategy:
-- Idempotency-Key
-- fingerprint hashing
+- required Idempotency-Key
 - DB unique constraints
 - ON CONFLICT logic
 
