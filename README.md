@@ -71,6 +71,7 @@
 완화 전략:
 - 워커 동시 실행 수 제한(스레드풀/벌크헤드)
 - `FOR UPDATE SKIP LOCKED` 기반 claim
+- `poll-ready RUNNING`과 신규 `QUEUED`를 slot reservation으로 균형 배분해 완료 확인 starvation 방지
 - 재시도 + 백오프
 - claim/requeue 배치 크기 제한(`batch_size`)
 - 상태 폴링 간격 분리(`APP_WORKER_STATUS_POLL_INTERVAL_MS`)와 `next_poll_at` 기반 DB 재스케줄로 외부 조회 부하와 worker thread 점유를 제어
@@ -120,6 +121,10 @@ Mock Worker:
 사전 요구사항:
 - Docker
 - Docker Compose
+
+스키마 초기화:
+- fresh DB에서는 `CREATE TABLE IF NOT EXISTS`로 생성
+- 기존 DB 볼륨을 재사용하는 경우에도 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`로 `next_poll_at`, `processing_started_at` 컬럼을 보강
 
 실행:
 
@@ -171,6 +176,8 @@ curl -X POST "https://dev.realteeth.ai/mock/auth/issue-key" \
 - HTTP 레벨 동시성 검증: `DuplicateRequestHttpRaceIntegrationTest`
 - Postgres(Testcontainers) claim/lease E2E 검증: `WorkerClaimLeasePostgresIntegrationTest`
 - `next_poll_at` 재스케줄/heartbeat 안전 포기/최대 실행 시간 검증: `WorkerExecutionIntegrationTest`
+- `poll-ready`/`QUEUED` 균형 claim 검증: `WorkerSchedulerTest`
+- 기존 DB 스키마 진화 smoke 검증: `SchemaSqlMigrationSmokeTest`
 - API Key 자동 발급/재사용/401 self-healing 검증: `MockWorkerAutoIssueKeyIntegrationTest`
 
 컨테이너 스모크:

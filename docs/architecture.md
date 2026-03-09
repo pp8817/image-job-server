@@ -13,6 +13,7 @@ We implement an asynchronous Job orchestration server:
 - background worker claims jobs from DB and orchestrates Mock Worker
 - status/result are stored in DB for observability and restart recovery
 - `PROCESSING` 상태는 DB `next_poll_at` 기반으로 재스케줄되어 worker thread를 장시간 점유하지 않음
+- scheduler는 `poll-ready RUNNING`과 신규 `QUEUED`를 slot reservation으로 균형 배분해 어느 한쪽도 starvation되지 않도록 함
 
 ## 3. Internal State Model
 States:
@@ -63,6 +64,7 @@ We use DB-based queue with SKIP LOCKED:
 - Worker stores `processing_started_at` on first RUNNING claim.
 - If Mock Worker returns PROCESSING, worker releases lease, stores `next_poll_at`, and exits.
 - Scheduler later re-claims RUNNING jobs with `next_poll_at <= now` and performs the next poll.
+- Scheduler reserves 일부 slot을 `poll-ready RUNNING`용으로 먼저 확보하고, 남는 slot으로 `QUEUED`를 claim한 뒤, 미사용 예약분은 반대편으로 재할당한다.
 - If lease heartbeat fails (DB error or lease lost), worker safely abandons current execution and lets stale recovery re-claim the job.
 - If processing exceeds `APP_WORKER_MAX_PROCESSING_SECONDS` (default 1800), worker also abandons and defers to stale recovery.
 
@@ -83,6 +85,7 @@ On server restart:
 - stale RUNNING jobs get re-queued and retried
 - stale RUNNING jobs at/over max attempts are completed as FAILED(TIMEOUT)
 - auto-issued Mock API key receives one self-healing refresh attempt on 401 during `POST /mock/process`
+- schema init is idempotent for both fresh DB and reused DB volumes; missing polling columns are added with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
 
 Data integrity risk points:
 - crash after POST /mock/process but before saving external_job_id
