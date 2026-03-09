@@ -324,6 +324,7 @@ Completed:
 - 기존 DB 볼륨 재사용 시 polling 컬럼을 보강하는 idempotent schema init 적용
 - `WorkerSchedulerTest`, `SchemaSqlMigrationSmokeTest` 추가
 - `bootJar` classpath에 worker/schema SQL 파일이 포함되는 패키징 회귀 테스트 추가
+- Mock Worker `COMPLETED + null result`를 `FAILED(INTERNAL)`로 방어하고 관련 회귀 테스트 추가
 
 In Progress:
 - None

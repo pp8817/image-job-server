@@ -125,6 +125,42 @@ class WorkerExecutionIntegrationTest {
     }
 
     @Test
+    fun `mock worker가 COMPLETED지만 result가 null이면 job은 INTERNAL FAILED가 된다`() {
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"jobId\":\"ext-null-result\",\"status\":\"PROCESSING\"}"),
+        )
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"jobId\":\"ext-null-result\",\"status\":\"COMPLETED\",\"result\":null}"),
+        )
+
+        val jobId = insertRunningJob()
+
+        workerExecutionService.execute(jobId)
+
+        val scheduled = jobRepository.findById(jobId).orElseThrow()
+        assertEquals(JobStatus.RUNNING, scheduled.status)
+        assertEquals("ext-null-result", scheduled.externalJobId)
+        assertNotNull(scheduled.nextPollAt)
+
+        reclaimForPoll(jobId)
+        workerExecutionService.execute(jobId)
+
+        val updated = jobRepository.findById(jobId).orElseThrow()
+        assertEquals(JobStatus.FAILED, updated.status)
+
+        val result = jobResultRepository.findByJobId(jobId)
+        assertEquals(JobErrorCode.INTERNAL, result?.errorCode)
+        assertEquals(WorkerProcessRunner.COMPLETED_WITHOUT_RESULT_MESSAGE, result?.errorMessage)
+        assertNull(result?.resultPayload)
+    }
+
+    @Test
     fun `retry 가능한 에러 이후 성공하면 job은 SUCCEEDED가 된다`() {
         mockWebServer.enqueue(
             MockResponse()

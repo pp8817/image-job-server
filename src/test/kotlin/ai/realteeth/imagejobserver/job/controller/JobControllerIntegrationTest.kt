@@ -1,9 +1,11 @@
 package ai.realteeth.imagejobserver.job.controller
 
 import ai.realteeth.imagejobserver.job.domain.JobEntity
+import ai.realteeth.imagejobserver.job.domain.JobErrorCode
 import ai.realteeth.imagejobserver.job.domain.JobStatus
 import ai.realteeth.imagejobserver.job.repository.JobJpaRepository
 import ai.realteeth.imagejobserver.job.repository.JobResultJpaRepository
+import ai.realteeth.imagejobserver.job.service.JobService
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -35,6 +37,9 @@ class JobControllerIntegrationTest {
 
     @Autowired
     private lateinit var jobResultRepository: JobResultJpaRepository
+
+    @Autowired
+    private lateinit var jobService: JobService
 
     @BeforeEach
     fun setUp() {
@@ -135,5 +140,31 @@ class JobControllerIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(requestBody),
         ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `INTERNAL FAILED job의 result 조회는 실패 응답을 반환한다`() {
+        val job = jobRepository.saveAndFlush(
+            JobEntity(
+                id = UUID.randomUUID(),
+                status = JobStatus.RUNNING,
+                imageUrl = "https://example.com/completed-null-result.png",
+                idempotencyKey = "idem-completed-null-result",
+            ),
+        )
+
+        jobService.completeFailed(
+            jobId = job.id,
+            errorCode = JobErrorCode.INTERNAL,
+            message = "Mock Worker returned COMPLETED without result",
+        )
+
+        val response = mockMvc.perform(get("/jobs/{jobId}/result", job.id))
+            .andExpect(status().isOk)
+            .andReturn()
+
+        val json = objectMapper.readTree(response.response.contentAsString)
+        assertEquals("INTERNAL", json.path("errorCode").asText())
+        assertEquals("Mock Worker returned COMPLETED without result", json.path("message").asText())
     }
 }

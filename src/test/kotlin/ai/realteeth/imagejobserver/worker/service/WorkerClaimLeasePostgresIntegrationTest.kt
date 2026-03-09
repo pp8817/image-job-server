@@ -134,6 +134,62 @@ class WorkerClaimLeasePostgresIntegrationTest : PostgresContainerSupport() {
     }
 
     @Test
+    fun `claim한 queued job이 poll-ready 이후 COMPLETED null result를 받으면 INTERNAL FAILED로 완료된다`() {
+        val jobId = insertQueuedJob()
+
+        val claimed = workerClaimRepository.claimQueuedJobs(
+            workerId = "worker-1",
+            leaseSeconds = 30,
+            batchSize = 5,
+        )
+        assertTrue(claimed.contains(jobId))
+
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"jobId\":\"ext-null-result-1\",\"status\":\"PROCESSING\"}"),
+        )
+
+        workerExecutionService.execute(jobId)
+
+        val scheduled = jobRepository.findById(jobId).orElseThrow()
+        assertEquals(JobStatus.RUNNING, scheduled.status)
+        assertEquals("ext-null-result-1", scheduled.externalJobId)
+        assertNotNull(scheduled.nextPollAt)
+
+        scheduled.nextPollAt = Instant.now().minusSeconds(1)
+        jobRepository.saveAndFlush(scheduled)
+
+        mockWebServer.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .addHeader("Content-Type", "application/json")
+                .setBody("{\"jobId\":\"ext-null-result-1\",\"status\":\"COMPLETED\",\"result\":null}"),
+        )
+
+        val pollClaimed = workerClaimRepository.claimPollReadyRunningJobs(
+            workerId = "worker-1",
+            leaseSeconds = 30,
+            batchSize = 5,
+        )
+        assertTrue(pollClaimed.contains(jobId))
+
+        workerExecutionService.execute(jobId)
+
+        val failed = jobRepository.findById(jobId).orElseThrow()
+        assertEquals(JobStatus.FAILED, failed.status)
+        assertNull(failed.lockedBy)
+        assertNull(failed.lockedUntil)
+        assertNull(failed.nextPollAt)
+
+        val result = jobResultRepository.findByJobId(jobId)
+        assertEquals(JobErrorCode.INTERNAL, result?.errorCode)
+        assertEquals(WorkerProcessRunner.COMPLETED_WITHOUT_RESULT_MESSAGE, result?.errorMessage)
+        assertNull(result?.resultPayload)
+    }
+
+    @Test
     fun `stale RUNNING job은 max attempts 미만일 때만 requeue 된다`() {
         val staleRequeueTarget = insertRunningJob(
             attemptCount = 1,
