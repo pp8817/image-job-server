@@ -14,13 +14,14 @@ Retry Strategy:
 - On each retry, update attempt_count
 - If attempts exceed max, mark FAILED
 - During retry waits, worker extends lease heartbeat; if heartbeat fails, worker abandons current execution safely and lets stale recovery re-claim the job.
-- Status polling interval is configurable via `APP_WORKER_STATUS_POLL_INTERVAL_MS`.
+- Status polling interval is configurable via `APP_WORKER_STATUS_POLL_INTERVAL_MS`, and `PROCESSING` jobs are rescheduled through DB `next_poll_at` rather than `Thread.sleep`.
 - Max processing duration is bounded by `APP_WORKER_MAX_PROCESSING_SECONDS` (default 1800). On timeout, worker abandons execution and stale recovery takes over.
 
 ## Non-retryable Errors (fail fast)
 - HTTP 401 Unauthorized (bad API key)
 - HTTP 400 Bad Request (invalid payload)
 - Validation errors (422)
+- Exception: auto-issued API key for `POST /mock/process` may be refreshed once on 401 before final failure
 
 ## Error Mapping (for our API)
 - 401 -> errorCode=UNAUTHORIZED

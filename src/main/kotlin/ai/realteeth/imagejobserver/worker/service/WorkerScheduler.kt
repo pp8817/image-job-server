@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
 import org.springframework.stereotype.Component
+import java.util.UUID
 import kotlin.math.min
 
 @Component
@@ -62,8 +63,23 @@ class WorkerScheduler(
             leaseSeconds = workerProperties.leaseSeconds,
             batchSize = min(workerProperties.batchSize, availableSlots),
         )
+        dispatch(claimed)
 
-        claimed.forEach { jobId ->
+        val remainingSlots = (availableSlots - claimed.size).coerceAtLeast(0)
+        if (remainingSlots == 0) {
+            return
+        }
+
+        val pollReady = workerClaimRepository.claimPollReadyRunningJobs(
+            workerId = workerProperties.id,
+            leaseSeconds = workerProperties.leaseSeconds,
+            batchSize = min(workerProperties.batchSize, remainingSlots),
+        )
+        dispatch(pollReady)
+    }
+
+    private fun dispatch(jobIds: List<UUID>) {
+        jobIds.forEach { jobId ->
             workerTaskExecutor.execute {
                 workerExecutionService.execute(jobId)
             }

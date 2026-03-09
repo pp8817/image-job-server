@@ -90,6 +90,10 @@ If finished and failed (200 OK):
 
 GET /jobs?page=0&size=20&status=RUNNING
 
+Query constraints:
+- `page >= 0`
+- `1 <= size <= 100`
+
 Response (200):
 ```json
 {
@@ -107,3 +111,6 @@ Response (200):
   ]
 }
 ```
+
+Response (400 Bad Request):
+- invalid `page` or `size`

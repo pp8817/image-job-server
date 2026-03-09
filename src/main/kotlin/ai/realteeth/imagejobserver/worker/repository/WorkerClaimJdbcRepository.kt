@@ -22,6 +22,17 @@ class WorkerClaimJdbcRepository(
         }
     }
 
+    override fun claimPollReadyRunningJobs(workerId: String, leaseSeconds: Int, batchSize: Int): List<UUID> {
+        val params = MapSqlParameterSource()
+            .addValue("worker_id", workerId)
+            .addValue("lease_seconds", leaseSeconds)
+            .addValue("batch_size", batchSize)
+
+        return jdbcTemplate.query(claimSqlProvider.claimPollReadySql, params) { rs, _ ->
+            rs.getObject("id", UUID::class.java)
+        }
+    }
+
     override fun requeueStaleRunningJobs(batchSize: Int, maxAttempts: Int): List<UUID> {
         val params = MapSqlParameterSource()
             .addValue("batch_size", batchSize)

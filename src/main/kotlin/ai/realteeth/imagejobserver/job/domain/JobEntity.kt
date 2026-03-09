@@ -43,6 +43,12 @@ class JobEntity(
     @Column(name = "locked_until")
     var lockedUntil: Instant? = null,
 
+    @Column(name = "next_poll_at")
+    var nextPollAt: Instant? = null,
+
+    @Column(name = "processing_started_at")
+    var processingStartedAt: Instant? = null,
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false, nullable = false)
     var createdAt: Instant? = null,

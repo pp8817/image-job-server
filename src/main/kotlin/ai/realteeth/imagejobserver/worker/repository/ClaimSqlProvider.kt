@@ -14,6 +14,9 @@ class ClaimSqlProvider {
     val requeueStaleSql: String
         get() = loadSql("db/requeue-stale.sql")
 
+    val claimPollReadySql: String
+        get() = loadSql("db/claim-poll-ready.sql")
+
     val extendLeaseSql: String
         get() = loadSql("db/extend-lease.sql")
 

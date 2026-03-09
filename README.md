@@ -73,7 +73,7 @@
 - `FOR UPDATE SKIP LOCKED` 기반 claim
 - 재시도 + 백오프
 - claim/requeue 배치 크기 제한(`batch_size`)
-- 상태 폴링 간격 분리(`APP_WORKER_STATUS_POLL_INTERVAL_MS`)로 외부 조회 부하 제어
+- 상태 폴링 간격 분리(`APP_WORKER_STATUS_POLL_INTERVAL_MS`)와 `next_poll_at` 기반 DB 재스케줄로 외부 조회 부하와 worker thread 점유를 제어
 - stale + `attempt_count >= max_attempts` 작업은 `FAILED(TIMEOUT)`으로 종결하여 무한 재큐잉 방지
 
 ## 5. 외부 시스템 연동 방식
@@ -85,12 +85,13 @@ Mock Worker:
 
 연동 모델:
 - 내부 job이 `RUNNING` 상태가 되면 외부 작업 시작 요청(`POST /mock/process`)
-- 외부 `jobId`를 저장하고 주기적으로 `GET /mock/process/{jobId}` 폴링
+- 외부 `jobId`를 저장하고, `PROCESSING`이면 `next_poll_at`를 설정한 뒤 이후 스케줄 tick에서 `GET /mock/process/{jobId}`를 다시 조회
 - 상태 매핑:
   - `PROCESSING -> RUNNING`
   - `COMPLETED -> SUCCEEDED`
   - `FAILED -> FAILED`
 - `APP_MOCK_API_KEY` 미설정 시 `APP_MOCK_AUTO_ISSUE_ENABLED=true`이면 `/mock/auth/issue-key`를 지연 호출해 API Key를 자동 발급/캐시
+- 자동 발급 key가 `401`을 받으면 캐시 무효화 후 1회 재발급을 시도하고, 다시 실패하면 `UNAUTHORIZED`로 종료
 
 ## 6. 처리 보장 모델
 
@@ -102,7 +103,7 @@ Mock Worker:
 재시작 시:
 - 작업 상태는 DB에 남아 유실되지 않음
 - 워커가 재기동 후 `QUEUED`/stale `RUNNING` 작업을 다시 처리
-- `external_job_id`가 있으면 외부 상태를 재폴링해 내부 상태와 동기화
+- `external_job_id`와 `next_poll_at`가 있으면 스케줄러가 다시 claim해 외부 상태를 재폴링하며 내부 상태와 동기화
 
 정합성 리스크 지점:
 - 외부 시작 호출 직후 프로세스 크래시(외부 `jobId` 저장 전)
@@ -148,6 +149,7 @@ docker compose down
 - `APP_WORKER_MAX_ATTEMPTS=3`
 - `APP_WORKER_STATUS_POLL_INTERVAL_MS=2000`
 - `APP_WORKER_MAX_PROCESSING_SECONDS=1800`
+- `APP_WORKER_THREADS=4`
 - `APP_MOCK_BASE_URL=https://dev.realteeth.ai/mock`
 - `APP_MOCK_API_KEY=` (비우면 자동 발급 사용 가능)
 - `APP_MOCK_AUTO_ISSUE_ENABLED=true`
@@ -168,8 +170,8 @@ curl -X POST "https://dev.realteeth.ai/mock/auth/issue-key" \
 - `./gradlew test` 통과
 - HTTP 레벨 동시성 검증: `DuplicateRequestHttpRaceIntegrationTest`
 - Postgres(Testcontainers) claim/lease E2E 검증: `WorkerClaimLeasePostgresIntegrationTest`
-- heartbeat 안전 포기/최대 실행 시간 검증: `WorkerExecutionIntegrationTest`
-- API Key 자동 발급/재사용 검증: `MockWorkerAutoIssueKeyIntegrationTest`
+- `next_poll_at` 재스케줄/heartbeat 안전 포기/최대 실행 시간 검증: `WorkerExecutionIntegrationTest`
+- API Key 자동 발급/재사용/401 self-healing 검증: `MockWorkerAutoIssueKeyIntegrationTest`
 
 컨테이너 스모크:
 - `cd docker && docker compose up --build -d`

@@ -290,7 +290,7 @@ README includes all assignment design explanations.
 
 Update this section when work progresses.
 
-Last updated: 2026-03-09 16:35 KST
+Last updated: 2026-03-09 12:50 KST
 
 Current Phase: Phase 10 (Documentation) - Completed
 
@@ -316,6 +316,11 @@ Completed:
 - 워커 실행 책임을 lease/retry/process runner로 분리하고 `WorkerExecutionService`를 orchestration entrypoint로 축소
 - worker claim SQL 로딩을 statement별 파일 분리 구조로 변경해 세미콜론 파싱 의존 제거
 - Mock Worker 설정 키 우선 사용 회귀 테스트 추가
+- Mock Worker 자동 발급 API key 401 self-healing 반영
+- `GET /jobs`의 `page`, `size` 입력 검증 추가 (`page>=0`, `1<=size<=100`)
+- JobService 응답 모델과 API DTO 계층 분리
+- `next_poll_at` / `processing_started_at` 기반 비블로킹 워커 재스케줄 폴링 도입
+- `RUNNING + next_poll_at <= now` 재클레임 SQL 및 테스트 반영
 
 In Progress:
 - None

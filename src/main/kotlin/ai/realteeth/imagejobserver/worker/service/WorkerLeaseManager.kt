@@ -6,6 +6,7 @@ import ai.realteeth.imagejobserver.worker.config.WorkerProperties
 import ai.realteeth.imagejobserver.worker.repository.WorkerClaimRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.time.Instant
 import java.util.UUID
 
 @Component
@@ -35,13 +36,7 @@ class WorkerLeaseManager(
         }
     }
 
-    fun sleepNextPoll(): Boolean {
-        return try {
-            Thread.sleep(workerProperties.statusPollIntervalMs)
-            true
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-            false
-        }
-    }
+    fun nextPollAt(): Instant = Instant.now().plusMillis(workerProperties.statusPollIntervalMs)
+
+    fun workerId(): String = workerProperties.id
 }

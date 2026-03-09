@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS job (
 
     locked_by           VARCHAR(128) NULL,
     locked_until        TIMESTAMPTZ NULL,
+    next_poll_at        TIMESTAMPTZ NULL,
+    processing_started_at TIMESTAMPTZ NULL,
 
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -40,6 +42,10 @@ CREATE INDEX IF NOT EXISTS ix_job_status_created_at
 -- Index for stale running jobs
 CREATE INDEX IF NOT EXISTS ix_job_status_locked_until
     ON job (status, locked_until);;
+
+-- Index for next poll scheduling
+CREATE INDEX IF NOT EXISTS ix_job_status_next_poll_at
+    ON job (status, next_poll_at);;
 
 -- =========================
 -- 2) job_result table

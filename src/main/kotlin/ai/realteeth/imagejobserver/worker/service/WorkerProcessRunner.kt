@@ -9,6 +9,7 @@ import ai.realteeth.imagejobserver.worker.config.WorkerProperties
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 
 @Component
@@ -23,69 +24,71 @@ class WorkerProcessRunner(
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun run(jobId: UUID, initialJob: JobEntity) {
-        val startedAtNanos = System.nanoTime()
-        val externalJobId = resolveExternalJobId(jobId, initialJob)
-
-        while (true) {
-            val job = jobService.findById(jobId) ?: return
-            if (!workerLeaseManager.isOwnedRunningJob(job)) {
-                return
-            }
-
-            if (isProcessingTimedOut(startedAtNanos)) {
-                log.warn(
-                    "Processing timeout reached for job {}, abandon current execution for stale recovery",
-                    jobId,
-                )
-                return
-            }
-
-            if (!workerLeaseManager.safeExtendLease(jobId)) {
-                log.warn("Lease extension failed for job {}, abandon current execution", jobId)
-                return
-            }
-
-            val statusResponse = workerRetryExecutor.execute(jobId) {
-                mockWorkerClient.getProcessStatus(externalJobId)
-            }
-
-            when (statusResponse.status) {
-                MockWorkerJobStatus.PROCESSING -> {
-                    if (!workerLeaseManager.sleepNextPoll()) {
-                        return
-                    }
-                }
-
-                MockWorkerJobStatus.COMPLETED -> {
-                    jobService.completeSucceeded(jobId, statusResponse.result ?: "")
-                    return
-                }
-
-                MockWorkerJobStatus.FAILED -> {
-                    jobService.completeFailed(
-                        jobId = jobId,
-                        errorCode = JobErrorCode.MOCK_WORKER_FAILED,
-                        message = statusResponse.result ?: "Mock Worker returned FAILED",
-                    )
-                    return
-                }
-            }
+        if (!workerLeaseManager.isOwnedRunningJob(initialJob)) {
+            return
         }
-    }
 
-    private fun resolveExternalJobId(jobId: UUID, job: JobEntity): String {
-        return job.externalJobId ?: run {
+        if (isProcessingTimedOut(initialJob)) {
+            log.warn(
+                "Processing timeout reached for job {}, abandon current execution for stale recovery",
+                jobId,
+            )
+            return
+        }
+
+        if (initialJob.externalJobId == null) {
             val startResponse = workerRetryExecutor.execute(jobId) {
-                mockWorkerClient.startProcess(job.imageUrl)
+                mockWorkerClient.startProcess(initialJob.imageUrl)
             }
             jobService.saveExternalJobId(jobId, startResponse.jobId)
-            startResponse.jobId
+            handleStatus(
+                jobId = jobId,
+                status = startResponse.status,
+                result = null,
+            )
+            return
+        }
+
+        val externalJobId = initialJob.externalJobId ?: return
+        val statusResponse = workerRetryExecutor.execute(jobId) {
+            mockWorkerClient.getProcessStatus(externalJobId)
+        }
+        handleStatus(
+            jobId = jobId,
+            status = statusResponse.status,
+            result = statusResponse.result,
+        )
+    }
+
+    private fun handleStatus(jobId: UUID, status: MockWorkerJobStatus, result: String?) {
+        when (status) {
+            MockWorkerJobStatus.PROCESSING -> {
+                val scheduled = jobService.scheduleNextPoll(
+                    jobId = jobId,
+                    workerId = workerLeaseManager.workerId(),
+                    nextPollAt = workerLeaseManager.nextPollAt(),
+                )
+                if (!scheduled) {
+                    log.warn("Failed to schedule next poll for job {}, abandon for recovery", jobId)
+                }
+            }
+
+            MockWorkerJobStatus.COMPLETED -> {
+                jobService.completeSucceeded(jobId, result ?: "")
+            }
+
+            MockWorkerJobStatus.FAILED -> {
+                jobService.completeFailed(
+                    jobId = jobId,
+                    errorCode = JobErrorCode.MOCK_WORKER_FAILED,
+                    message = result ?: "Mock Worker returned FAILED",
+                )
+            }
         }
     }
 
-    private fun isProcessingTimedOut(startedAtNanos: Long): Boolean {
-        val elapsedNanos = System.nanoTime() - startedAtNanos
-        val maxNanos = Duration.ofSeconds(workerProperties.maxProcessingSeconds.toLong()).toNanos()
-        return elapsedNanos >= maxNanos
+    private fun isProcessingTimedOut(job: JobEntity): Boolean {
+        val startedAt = job.processingStartedAt ?: job.updatedAt ?: job.createdAt ?: return false
+        return Duration.between(startedAt, Instant.now()).seconds >= workerProperties.maxProcessingSeconds.toLong()
     }
 }

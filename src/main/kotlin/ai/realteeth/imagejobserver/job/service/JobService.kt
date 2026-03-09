@@ -16,6 +16,7 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.UUID
 
 @Service
@@ -148,6 +149,20 @@ class JobService(
     }
 
     @Transactional
+    fun scheduleNextPoll(jobId: UUID, workerId: String, nextPollAt: Instant): Boolean {
+        val job = getJobForUpdate(jobId)
+        if (job.status != JobStatus.RUNNING || job.lockedBy != workerId) {
+            return false
+        }
+
+        job.lockedBy = null
+        job.lockedUntil = null
+        job.nextPollAt = nextPollAt
+        jobRepository.save(job)
+        return true
+    }
+
+    @Transactional
     fun completeSucceeded(jobId: UUID, payload: String) {
         val job = getJobForUpdate(jobId)
         if (job.status.isFinal()) {
@@ -158,6 +173,7 @@ class JobService(
         job.status = JobStatus.SUCCEEDED
         job.lockedBy = null
         job.lockedUntil = null
+        job.nextPollAt = null
         jobRepository.save(job)
 
         val jobResult = jobResultRepository.findByJobId(jobId) ?: JobResultEntity(job = job)
@@ -178,6 +194,7 @@ class JobService(
         job.status = JobStatus.FAILED
         job.lockedBy = null
         job.lockedUntil = null
+        job.nextPollAt = null
         jobRepository.save(job)
 
         val jobResult = jobResultRepository.findByJobId(jobId) ?: JobResultEntity(job = job)

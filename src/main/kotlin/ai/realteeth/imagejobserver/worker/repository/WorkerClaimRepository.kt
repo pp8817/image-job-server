@@ -7,6 +7,8 @@ interface WorkerClaimRepository {
 
     fun claimQueuedJobs(workerId: String, leaseSeconds: Int, batchSize: Int): List<UUID>
 
+    fun claimPollReadyRunningJobs(workerId: String, leaseSeconds: Int, batchSize: Int): List<UUID>
+
     fun requeueStaleRunningJobs(batchSize: Int, maxAttempts: Int): List<UUID>
 
     fun findStaleRunningJobsAtOrOverMaxAttempts(batchSize: Int, maxAttempts: Int): List<UUID>

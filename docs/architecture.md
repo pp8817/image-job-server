@@ -12,6 +12,7 @@ We implement an asynchronous Job orchestration server:
 - REST API stores Job and returns internal jobId quickly
 - background worker claims jobs from DB and orchestrates Mock Worker
 - status/result are stored in DB for observability and restart recovery
+- `PROCESSING` 상태는 DB `next_poll_at` 기반으로 재스케줄되어 worker thread를 장시간 점유하지 않음
 
 ## 3. Internal State Model
 States:
@@ -59,8 +60,9 @@ We use DB-based queue with SKIP LOCKED:
     - status=RUNNING
     - locked_by=workerId
     - locked_until=now + leaseDuration
-- Worker periodically extends lease while processing.
-- Worker polls Mock Worker in a loop while status is PROCESSING.
+- Worker stores `processing_started_at` on first RUNNING claim.
+- If Mock Worker returns PROCESSING, worker releases lease, stores `next_poll_at`, and exits.
+- Scheduler later re-claims RUNNING jobs with `next_poll_at <= now` and performs the next poll.
 - If lease heartbeat fails (DB error or lease lost), worker safely abandons current execution and lets stale recovery re-claim the job.
 - If processing exceeds `APP_WORKER_MAX_PROCESSING_SECONDS` (default 1800), worker also abandons and defers to stale recovery.
 
@@ -80,6 +82,7 @@ On server restart:
 - if external_job_id exists, worker polls GET /mock/process/{external_job_id} to resync
 - stale RUNNING jobs get re-queued and retried
 - stale RUNNING jobs at/over max attempts are completed as FAILED(TIMEOUT)
+- auto-issued Mock API key receives one self-healing refresh attempt on 401 during `POST /mock/process`
 
 Data integrity risk points:
 - crash after POST /mock/process but before saving external_job_id
@@ -115,3 +118,4 @@ Mitigations:
 - If `APP_MOCK_API_KEY` is configured, worker uses it directly.
 - If not configured and `APP_MOCK_AUTO_ISSUE_ENABLED=true`, worker lazily calls `POST /mock/auth/issue-key` on first need.
 - Issued key is cached in memory and reused for subsequent `/mock/process` calls.
+- If an auto-issued key gets `401 Unauthorized`, the cache is invalidated and re-issued once before failing.

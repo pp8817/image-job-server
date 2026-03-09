@@ -14,6 +14,7 @@ SET
     status = 'QUEUED',
     locked_by = NULL,
     locked_until = NULL,
+    next_poll_at = NULL,
     attempt_count = j.attempt_count + 1
 FROM stale
 WHERE j.id = stale.id

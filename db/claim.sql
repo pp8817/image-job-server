@@ -19,7 +19,9 @@ UPDATE job j
 SET
     status = 'RUNNING',
     locked_by = :worker_id,
-    locked_until = NOW() + (:lease_seconds || ' seconds')::interval
+    locked_until = NOW() + (:lease_seconds || ' seconds')::interval,
+    next_poll_at = NULL,
+    processing_started_at = COALESCE(j.processing_started_at, NOW())
 FROM cte
 WHERE j.id = cte.id
     RETURNING j.*;
@@ -46,13 +48,42 @@ SET
     status = 'QUEUED',
     locked_by = NULL,
     locked_until = NULL,
+    next_poll_at = NULL,
     attempt_count = j.attempt_count + 1
 FROM stale
 WHERE j.id = stale.id
     RETURNING j.*;
 
 -- =========================
--- C) Extend lease for a running job (heartbeat)
+-- C) Claim RUNNING jobs ready for next poll
+-- =========================
+-- Params:
+-- :worker_id (string)
+-- :lease_seconds (int)
+-- :batch_size (int)
+WITH due AS (
+    SELECT id
+    FROM job
+    WHERE status = 'RUNNING'
+      AND locked_by IS NULL
+      AND locked_until IS NULL
+      AND next_poll_at IS NOT NULL
+      AND next_poll_at <= NOW()
+    ORDER BY next_poll_at ASC
+    LIMIT :batch_size
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE job j
+SET
+    locked_by = :worker_id,
+    locked_until = NOW() + (:lease_seconds || ' seconds')::interval,
+    next_poll_at = NULL
+FROM due
+WHERE j.id = due.id
+    RETURNING j.*;
+
+-- =========================
+-- D) Extend lease for a running job (heartbeat)
 -- =========================
 -- Params:
 -- :job_id (uuid)
@@ -67,7 +98,7 @@ WHERE id = :job_id
     RETURNING *;
 
 -- =========================
--- D) Select stale running jobs that exceeded max attempts
+-- E) Select stale running jobs that exceeded max attempts
 -- =========================
 -- Params:
 -- :batch_size (int)
